@@ -1,0 +1,139 @@
+<template>
+  <div class="page" data-name="chat">
+    <div class="navbar">
+      <div class="navbar-bg"></div>
+      <div class="navbar-inner sliding">
+        <div class="title">チャット</div>
+      </div>
+    </div>
+    <div class="toolbar messagebar">
+      <form id="chat">
+        <div class="toolbar-inner">
+          <div class="messagebar-area">
+            <textarea name="text" class="resizable" placeholder="Message"></textarea>
+          </div>
+          <a class="link send-link" href="#" @click=${sendMessage}>Send</a>
+        </div>
+      </form>
+    </div>
+    <div class="page-content">
+      <div class="messages">
+      </div>
+    </div>
+  </div>
+</template>
+<script>
+  export default (props, { $on, $update, $tick, $onMounted }) => {
+    // データストアに保存する用のクラス名（DBで言うテーブル名相当）
+    const Message = ncmb.DataStore('Message');
+    // ログインユーザー
+    const user = ncmb.User.getCurrentUser();
+    // データ保存する際のACL（アクセス権限）
+    const acl = new ncmb.Acl;
+    acl
+      .setPublicReadAccess(true)        // 誰でも閲覧可能
+      .setUserWriteAccess(user, true);  // ユーザのみ編集・削除可能
+    
+    let messagebar;           // メッセージ入力欄用
+    let messages = [];        // チャットメッセージ（描画用）
+    let messageObjects = [];  // チャットメッセージ（データストアから取得）
+
+    // NCMBにあるチャットメッセージを取得する関数
+    const getMessages = () => {
+      return Message
+        .include('user') // ユーザー情報も取得
+        .limit(100)      // 100件まで
+        .fetchAll();
+    }
+
+    // マウントされた際に実行
+    $onMounted(() => {
+      // WebSocketでメッセージを受け取った際に呼び出される関数
+      window.webSocket.onmessage = (e) => {
+        // 文字列のメッセージをJSONとしてパース
+        const message = JSON.parse(e.data);
+        // ユーザー情報はHTMLをアンエスケープした上でパース
+        message.user = JSON.parse(unescapeHtml(message.user));
+        // チャットメッセージを追加
+        addMessage(message);
+      };
+    });
+
+    // HTMLをアンエスケープする関数
+    const unescapeHtml = (target) => {
+      if (typeof target !== 'string') return target;
+      const patterns = {
+        '&lt;': '<',
+        '&gt;': '>',
+        '&amp;': '&',
+        '&quot;': '"',
+        '&#x27;':  '\'',
+        '&#x60;': '`'
+      };
+      return target.replace(/&(lt|gt|amp|quot|#x27|#x60);/g, match => {
+        return patterns[match];
+      });
+    };
+
+    // ページが初期化される際に呼ばれる関数
+    $on('page:init', async () => {
+      // チャットメッセージの作成
+      messages = app.messages.create({
+        el: '.messages',
+        scrollMessagesOnEdge: true,
+        // 最後のメッセージか判定する関数
+        lastMessageRule: function (message, previousMessage, nextMessage) {
+          if (message.isTitle) return false;
+          if (!nextMessage || nextMessage.type !== message.type || nextMessage.name !== message.name) return true;
+          return false;
+        },
+        // メッセージに吹き出しを付けるか判定する関数
+        tailMessageRule: function (message, previousMessage, nextMessage) {
+          if (message.isTitle) return false;
+          if (!nextMessage || nextMessage.type !== message.type || nextMessage.name !== message.name) return true;
+          return false;
+        }
+      });
+      // データストアからメッセージを取得
+      messageObjects = await getMessages();
+      // チャットメッセージに追加
+      messageObjects.forEach(addMessage);
+      // メッセージ入力欄を作成
+      messagebar = app.messagebar.create({
+        el: '.messagebar'
+      });
+    });
+
+    // チャット表示用のメッセージを追加する関数
+    const addMessage = (message) => {
+      // 詳細は以下を参照
+      // https://framework7.io/docs/messages#single-message-parameters
+      messages.addMessage({
+        text: message.message,
+        type: message.user.objectId === user.objectId ? 'sent' : 'received',
+        name: message.displayName,
+        avatar: '/assets/icons/person.png',
+      });
+    };
+
+    // メッセージ送信処理
+    const sendMessage = async () => {
+      // 入力内容を取得
+      const params = app.form.convertToData($('#chat'));
+      // Messageクラスのインスタンス（DBでいう行相当）を作成
+      const message = new Message;
+      // データを適用して保存
+      await message
+        .set('user', user)
+        .set('acl', acl)
+        .set('message', params.text)
+        .save();
+      // メッセージをコピー
+      const obj = {...message};
+      // WebSocketで通知
+      window.webSocket.send(JSON.stringify(obj));
+    }
+    return $render;
+  }
+
+</script>

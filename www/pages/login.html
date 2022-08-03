@@ -1,0 +1,52 @@
+<template>
+  <div class="page" data-name="form">
+    <div class="navbar">
+      <div class="navbar-bg"></div>
+      <div class="navbar-inner sliding">
+        <div class="title">名前を決める</div>
+      </div>
+    </div>
+    <div class="page-content">
+      <div class="block-title">チャットの名前を決めてください</div>
+      <form id="login">
+        <div class="list no-hairlines-md">
+          <ul>
+            <li>
+              <div class="item-content item-input">
+                <div class="item-inner">
+                  <div class="item-title item-label">名前</div>
+                  <div class="item-input-wrap">
+                    <input type="text" name="displayName" placeholder="お名前" required/>
+                  </div>
+                </div>
+              </div>
+            </li>
+          </ul>
+        </div>
+        <div class="block block-strong">
+          <p class="row">
+            <a href="#" @click=${login} class="col button">入室する</a>
+          </p>
+        </div>
+      </form>
+    </div>
+  </div>
+</template>
+<script>
+  export default (props, { $f7router }) => {
+    // ログイン処理を行う関数
+    const login = async () => {
+      // 入力値の取得
+      const params = app.form.convertToData($('#login'));
+      // 匿名認証の実行
+      const user = await ncmb.User.loginAsAnonymous();
+      // 入力された表示名を適用して更新
+      await user
+        .set('displayName', params.displayName)
+        .update();
+      // チャット画面にリダイレクト
+      $f7router.navigate('/chat/');
+    }
+    return $render;
+  }
+</script>
